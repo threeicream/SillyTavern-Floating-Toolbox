@@ -145,18 +145,27 @@ await test('开放Shadow DOM中的入口可绑定', () => {
     assert(resolveLocator(document, rule.locator).node === entry && entry.hasAttribute(HIDDEN), '影子入口匹配失败');
     host.remove(); app.scan();
 });
-await test('浮动Shadow宿主内的普通按钮可发现、收纳并触发', async () => {
+await test('浮动Shadow入口收纳后不遮挡后方按钮，原面板仍可操作', async () => {
     const host = document.createElement('div'); host.id = 'fixture-floating-shadow';
-    host.style.cssText = 'position:fixed;top:110px;left:140px'; document.body.append(host);
+    host.style.cssText = 'position:fixed;top:110px;left:140px;z-index:20002'; document.body.append(host);
+    const behind = ball('fixture-behind-shadow', '后方入口');
+    behind.style.cssText = 'position:fixed;top:110px;left:140px;width:100px;height:44px;z-index:20001';
     const root = host.attachShadow({ mode: 'open' });
-    root.innerHTML = '<button aria-label="战斗目录" style="width:100px;height:44px;cursor:pointer">战斗目录</button>';
-    const entry = root.querySelector('button'); let opened = 0; entry.onclick = () => { opened++; };
+    root.innerHTML = '<style>.no-pointer{pointer-events:none}</style><button aria-label="战斗目录" style="width:100px;height:44px;cursor:pointer">战斗目录</button><div class="no-pointer"></div><div class="pane" hidden style="position:fixed;top:170px;left:140px;width:100px;height:60px;background:black"><button style="width:100px;height:60px">面板操作</button></div>';
+    const entry = root.querySelector('button'); const pane = root.querySelector('.pane');
+    let opened = 0; entry.onclick = () => { opened++; pane.hidden = false; };
     app.scan(); const candidate = candidateFor(entry);
     assert(candidate && candidate.locator.path[0].selector === '#fixture-floating-shadow', '未跨Shadow宿主发现普通按钮');
     const rule = app.accept(candidate);
     assert(rule && entry.hasAttribute(HIDDEN) && !host.hasAttribute(HIDDEN), '未收纳按钮或错误隐藏了整个宿主');
+    assert(document.elementFromPoint(180, 130) === behind, '透明宿主仍拦截后方入口');
+    assert(getComputedStyle(root.querySelector('.no-pointer')).pointerEvents === 'none', '覆盖了原脚本显式禁止点击的样式');
     await app.trigger(rule.id);
-    assert(opened === 1, '未触发原按钮事件'); host.remove(); app.scan();
+    assert(opened === 1, '未触发原按钮事件');
+    assert(root.elementFromPoint(180, 195) === pane.querySelector('button'), '原面板被宿主穿透规则禁用了点击');
+    rule.enabled = false; app.refreshSaved();
+    assert(!host.hasAttribute('data-ftb-pass-through') && getComputedStyle(host).pointerEvents === 'auto', '留在外面时没有恢复宿主');
+    host.remove(); behind.remove(); app.scan();
 });
 await test('点选iframe内嵌套Shadow按钮保存完整路径且不执行原操作', async () => {
     const frame = document.createElement('iframe'); frame.id = 'fixture-picker-frame';
@@ -174,8 +183,31 @@ await test('点选iframe内嵌套Shadow按钮保存完整路径且不执行原�
     assert(candidate.locator.path.map(step => step.kind).join(',') === 'frame,shadow,shadow', '捕获阶段丢失了框架或Shadow路径');
     const rule = app.accept(candidate);
     assert(rule && resolveLocator(document, rule.locator).node === entry && entry.hasAttribute(HIDDEN), '点选结果被误判失效');
+    assert(innerHost.getAttribute('data-ftb-pass-through') === 'true' && outer.host.getAttribute('data-ftb-pass-through') === 'true', '嵌套Shadow宿主没有逐层穿透');
     await app.trigger(rule.id);
-    assert(opened === 1, '已收纳按钮未触发'); frame.remove(); app.scan();
+    assert(opened === 1, '已收纳按钮未触发');
+    rule.enabled = false; app.refreshSaved();
+    assert(!innerHost.hasAttribute('data-ftb-pass-through') && !outer.host.hasAttribute('data-ftb-pass-through'), '嵌套Shadow宿主标记未清理');
+    frame.remove(); app.scan();
+});
+await test('世界简报使用原脚本开关接口，缺少接口时回退，报错时恢复原入口', async () => {
+    const entry = ball('addon-console-fab', '世界简报', 220);
+    const previous = window.__addonConsoleHost;
+    let toggles = 0; let ordinaryClicks = 0;
+    entry.onclick = () => { ordinaryClicks++; };
+    const api = { toggle() { assert(this === api, '开关接口丢失this'); toggles++; } };
+    window.__addonConsoleHost = api;
+    try {
+        app.scan(); const rule = app.accept(candidateFor(entry));
+        app.setOpen(true); await app.trigger(rule.id);
+        assert(toggles === 1 && ordinaryClicks === 0 && !app.open && entry.hasAttribute(HIDDEN), '未使用原脚本开关接口或没有重新收纳');
+        window.__addonConsoleHost = {};
+        await app.trigger(rule.id);
+        assert(ordinaryClicks === 1, '缺少原脚本接口时没有回退普通点击');
+        window.__addonConsoleHost = { toggle() { throw new Error('接口已失效'); } };
+        await app.trigger(rule.id);
+        assert(!rule.enabled && !entry.hasAttribute(HIDDEN) && ordinaryClicks === 1, '接口报错时未恢复原入口或重复触发');
+    } finally { window.__addonConsoleHost = previous; entry.remove(); app.scan(); }
 });
 await test('点选期间新建的Shadow根不会误触发原按钮', () => {
     app.startPicker();

@@ -1,7 +1,12 @@
 import { OWN, HIDDEN, cleanText, labelOf, makeLocator, locatorKey, accessibleRoots, resolveLocator, discoverDom, helperEntries, helperNodes, isVisible, pickAction, safeEntry, normalizeSettings } from './dom.js';
 
 // Preserve dimensions: script iframe auto-resizers must not collapse and remount a launcher.
-const HIDE_CSS = `[${HIDDEN}="true"], [${HIDDEN}="true"] * { visibility: hidden !important; pointer-events: none !important; } [data-ftb-pick="true"] { outline: 3px solid #f1cf78 !important; outline-offset: 4px !important; }`;
+const PASSTHROUGH = 'data-ftb-pass-through';
+const HIDE_CSS = `
+[${HIDDEN}="true"], [${HIDDEN}="true"] * { visibility: hidden !important; pointer-events: none !important; }
+[${PASSTHROUGH}="true"], :host([${PASSTHROUGH}="true"]) { pointer-events: none !important; }
+:where(:host([${PASSTHROUGH}="true"]) > *) { pointer-events: auto; }
+[data-ftb-pick="true"] { outline: 3px solid #f1cf78 !important; outline-offset: 4px !important; }`;
 const el = (doc, tag, className, text) => {
     const node = doc.createElement(tag);
     if (className) node.className = className;
@@ -17,6 +22,7 @@ export class FloatingToolbox {
         this.save = save;
         this.context = context;
         this.hiddenNodes = new Set();
+        this.passThroughHosts = new Map();
         this.rootStyles = new Map();
         this.active = new Map();
         this.candidates = [];
@@ -125,6 +131,11 @@ export class FloatingToolbox {
     _restoreNodes() {
         for (const node of this.hiddenNodes) node.removeAttribute(HIDDEN);
         this.hiddenNodes.clear();
+        for (const [host, previous] of this.passThroughHosts) {
+            if (previous === null) host.removeAttribute(PASSTHROUGH);
+            else host.setAttribute(PASSTHROUGH, previous);
+        }
+        this.passThroughHosts.clear();
     }
 
     refreshSaved() {
@@ -168,8 +179,17 @@ export class FloatingToolbox {
             this.active.set(rule.id, { rule, node, entry });
             this.statuses.set(rule.id, 'ok');
             for (const target of rule.kind === 'helper' ? nodes : node ? [node] : []) {
-                roots.add(target.getRootNode());
+                let root = target.getRootNode();
+                roots.add(root);
                 target.setAttribute(HIDDEN, 'true'); this.hiddenNodes.add(target);
+                // A hidden Shadow button leaves its host's box in the hit-test path.
+                // Pass through those boxes while keeping visible panel children usable.
+                while (root.host) {
+                    const host = root.host;
+                    if (!this.passThroughHosts.has(host)) this.passThroughHosts.set(host, host.getAttribute(PASSTHROUGH));
+                    host.setAttribute(PASSTHROUGH, 'true');
+                    root = host.getRootNode(); roots.add(root);
+                }
             }
         }
         this._syncStyles(roots);
@@ -265,9 +285,13 @@ export class FloatingToolbox {
                 if (match.node !== active.node || match.status !== 'ok') throw new Error('入口已经变化，请重新点选');
                 active.node.removeAttribute(HIDDEN);
                 this.hiddenNodes.delete(active.node);
-                if (typeof active.node.click !== 'function') throw new Error('该入口不支持普通点击');
                 if (this.settings.autoClose) this.setOpen(false);
-                active.node.click();
+                const consoleHost = active.node.id === 'addon-console-fab' && active.node.ownerDocument.defaultView.__addonConsoleHost;
+                if (typeof consoleHost?.toggle === 'function') await consoleHost.toggle();
+                else {
+                    if (typeof active.node.click !== 'function') throw new Error('该入口不支持普通点击');
+                    active.node.click();
+                }
             }
             this.refreshSaved();
         } catch (error) {
