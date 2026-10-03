@@ -1,0 +1,97 @@
+.ftb-host, .ftb-settings, .ftb-pick-banner {
+    --ftb-bg: #202033;
+    --ftb-gold: #d5b96e;
+    --ftb-text: #f0e7d2;
+    --ftb-muted: #b8b1a3;
+    font-family: system-ui, "Microsoft YaHei", sans-serif;
+    color: var(--ftb-text);
+    font-size: 14px;
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+.ftb-host *, .ftb-settings *, .ftb-pick-banner * { box-sizing: border-box; }
+.ftb-host [hidden], .ftb-settings [hidden] { display: none !important; }
+.ftb-host button, .ftb-settings button, .ftb-pick-banner button {
+    font: inherit;
+    cursor: pointer;
+    color: var(--ftb-text);
+    background: #2e2d40;
+    border: 1px solid #625941;
+    border-radius: 9px;
+    box-shadow: none;
+    margin: 0;
+}
+.ftb-host button:hover, .ftb-settings button:hover, .ftb-pick-banner button:hover { border-color: var(--ftb-gold); background: #39364a; }
+.ftb-host button:focus-visible, .ftb-settings button:focus-visible { outline: 2px solid var(--ftb-gold); outline-offset: 3px; }
+.ftb-host button:disabled { opacity: .35; cursor: default; }
+.ftb-launcher {
+    position: fixed;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 118px;
+    height: 48px;
+    padding: 8px 15px;
+    border: 1px solid var(--ftb-gold) !important;
+    border-radius: 26px !important;
+    background: #252438ee !important;
+    backdrop-filter: blur(14px);
+    color: #ead289 !important;
+    box-shadow: 0 4px 22px #0005 !important;
+    touch-action: none;
+    user-select: none;
+}
+.ftb-launcher-icon { font-size: 24px; line-height: 1; }
+.ftb-badge { padding: 1px 5px; border-radius: 8px; color: #27212a; background: #e2c875; font-size: 11px; }
+.ftb-panel {
+    position: fixed;
+    z-index: 2147483001;
+    width: min(370px, calc(100vw - 16px));
+    max-height: calc(100dvh - 24px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--ftb-gold);
+    border-radius: 16px;
+    background: #202033f5;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 12px 50px #0008;
+    overflow: hidden;
+    text-shadow: none;
+}
+.ftb-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 8px; gap: 8px; }
+.ftb-header strong { color: #ebd598; font-size: 16px; }
+.ftb-close { width: 36px; height: 36px; font-size: 24px !important; border: 0 !important; background: transparent !important; }
+.ftb-tabs { display: flex; gap: 6px; padding: 0 12px 10px; border-bottom: 1px solid #5d5343; }
+.ftb-tabs button { flex: 1; padding: 6px 8px; }
+.ftb-tabs .ftb-selected { color: #ead289; background: #4a4234; border-color: #b79b59; }
+.ftb-content { padding: 12px; overflow: auto; overscroll-behavior: contain; max-height: min(590px, calc(100dvh - 140px)); }
+.ftb-content { flex: 1 1 auto; min-height: 0; }
+.ftb-header, .ftb-tabs, .ftb-notice, .ftb-panel > .ftb-pending { flex: 0 0 auto; }
+.ftb-panel > .ftb-pending { margin: 10px 12px 0; }
+.ftb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.ftb-tool { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; min-height: 86px; padding: 11px 8px; overflow-wrap: anywhere; }
+.ftb-tool-icon { font-size: 25px; line-height: 1.3; color: var(--ftb-gold); }
+.ftb-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0; }
+.ftb-button { min-height: 36px; padding: 5px 10px; }
+.ftb-notice { margin: 0 12px; padding: 9px; color: #f0d99e; background: #4b4030; border-radius: 8px; }
+.ftb-rule, .ftb-candidate, .ftb-pending { display: flex; flex-direction: column; padding: 10px; border: 1px solid #514a43; border-radius: 10px; margin-bottom: 8px; gap: 3px; }
+.ftb-muted, .ftb-empty { color: var(--ftb-muted); }
+.ftb-empty { padding: 10px 4px; }
+.ftb-options { display: flex; flex-direction: column; gap: 5px; margin: 12px 0; }
+.ftb-options label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.ftb-host input[type="checkbox"] { appearance: auto; width: 17px; height: 17px; margin: 0; accent-color: var(--ftb-gold); }
+.ftb-host input:not([type="checkbox"]) { width: 100%; min-height: 38px; border: 1px solid #786748; border-radius: 7px; background: #161724; color: #f0e7d2; padding: 6px 9px; font: inherit; margin: 4px 0; }
+.ftb-content h4 { font-size: 14px; color: #e8cd8d; margin: 16px 0 8px; }
+.ftb-editor { margin-top: 5px; border-top: 1px solid #5d5343; padding-top: 5px; }
+.ftb-footer { border-top: 1px solid #5d5343; padding-top: 9px; margin-top: 14px; }
+.ftb-settings { padding: 10px; border: 1px solid #5d5343; border-radius: 10px; background: #202033; margin: 7px 0; }
+.ftb-settings summary { cursor: pointer; color: #e8cd8d; font-weight: 600; }
+.ftb-pick-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2147483100; max-width: calc(100vw - 20px); padding: 12px 16px; border: 1px solid #d5b96e; border-radius: 12px; background: #202033f5; box-shadow: 0 6px 28px #0008; }
+.ftb-pick-banner button { margin-left: 10px; padding: 6px 10px; }
+@media (max-width: 500px) {
+    .ftb-panel { width: min(350px, calc(100vw - 16px)); }
+    .ftb-tool { min-height: 82px; }
+    .ftb-button { min-height: 40px; }
+}

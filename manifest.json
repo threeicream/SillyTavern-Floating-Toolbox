@@ -1,0 +1,17 @@
+{
+  "display_name": "悬浮入口工具箱",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "cyy",
+  "version": "0.1.0",
+  "minimum_client_version": "1.18.0",
+  "hooks": {
+    "activate": "onEnable",
+    "disable": "onDisable",
+    "delete": "onDisable",
+    "enable": "onEnable"
+  }
+}

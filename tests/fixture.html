@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>悬浮入口工具箱 · 浏览器验证</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body { margin: 0; min-height: 100vh; background: linear-gradient(140deg,#162b3c,#29233c); color:#e6ddc9; font:16px system-ui; }
+    main { max-width:760px; margin:50px auto; padding:24px; }
+    #results { white-space:pre-wrap; line-height:1.8; }
+    .fixture-ball { position:fixed; width:58px; height:58px; border-radius:50%; background:#262439; color:#e5cc82; border:1px solid #c4aa64; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>悬浮入口工具箱</h1>
+    <p>独立浏览器验证页。不会访问酒馆聊天、模型或账号。</p>
+    <div id="results">正在验证……</div>
+    <div id="extensions_settings"></div>
+    <div id="form_sheld"><button id="native-fixture" class="fixture-ball" style="bottom:10px;left:10px">原生控件</button></div>
+  </main>
+  <script type="module" src="./browser-tests.js"></script>
+</body>
+</html>

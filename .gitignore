@@ -1,0 +1,5 @@
+node_modules/
+test-results/
+*.local.*
+*.zip
+.DS_Store

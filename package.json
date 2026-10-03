@@ -1,0 +1,10 @@
+{
+  "name": "sillytavern-floating-toolbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check index.js && node --check toolbox.js && node --check dom.js && node --check tests/browser-tests.js"
+  },
+  "engines": { "node": ">=18" }
+}
