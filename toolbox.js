@@ -26,6 +26,7 @@ export class FloatingToolbox {
         this.view = 'tools';
         this.picking = false;
         this.destroyed = false;
+        this.startupTimer = null;
         this.renderKey = '';
         this.message = '';
     }
@@ -61,6 +62,14 @@ export class FloatingToolbox {
         this._mountSettings();
         this._placeLauncher();
         this.refreshSaved();
+        let remaining = 5;
+        this.startupTimer = this.win.setInterval(() => {
+            if (--remaining === 0) {
+                this.win.clearInterval(this.startupTimer);
+                this.startupTimer = null;
+            }
+            this.refreshSaved();
+        }, 1000);
         return this;
     }
 
@@ -560,6 +569,8 @@ export class FloatingToolbox {
         if (this.destroyed) return;
         this.stopPicker();
         this.destroyed = true;
+        this.win.clearInterval(this.startupTimer);
+        this.startupTimer = null;
         this.win.clearTimeout(this.messageTimer);
         this._restoreNodes();
         for (const style of this.rootStyles.values()) style.remove();

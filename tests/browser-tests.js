@@ -268,16 +268,56 @@ await test('暂停收纳立即恢复原入口，重新启用仍使用旧规则',
     app.settings.enabled = true; app.scan();
     assert(document.getElementById('fixture-magic').hasAttribute(HIDDEN), '恢复启用失败');
 });
-await test('重新加载设置后入口自动匹配', () => {
+await test('重新加载设置后入口自动匹配，关闭时取消启动补收', async () => {
     const snapshot = structuredClone(app.settings);
     snapshot.rules.push({ id: 'invalid-frame-path', kind: 'dom', name: '无效旧规则', enabled: true, locator: { selector: '#fixture-magic', path: {} } });
     app.destroy();
     const restored = new FloatingToolbox({ settings: snapshot, context }).start();
     assert(restored.active.has(originalRule.id), '设置重新加载后未匹配');
     assert(!restored.settings.rules.some(r => r.id === 'invalid-frame-path'), '无效框架路径使设置失效');
+    let refreshes = 0;
+    restored.refreshSaved = () => { refreshes++; };
     restored.destroy();
+    assert(restored.startupTimer === null, '关闭后仍保留补收计时器');
+    await wait(1100);
+    assert(refreshes === 0, '关闭后仍执行补收');
     assert(!document.querySelector(`[${HIDDEN}]`), '关闭插件没有恢复原入口');
     assert(!document.querySelector('.ftb-launcher'), '关闭插件没有清理界面');
+});
+await test('已保存的延迟入口自动补收，5秒后停止且不发现新入口', async () => {
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'width:600px;height:300px;border:0';
+    frame.srcdoc = '<body style="margin:0"></body>';
+    document.body.append(frame);
+    await new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+    const doc = frame.contentDocument;
+    const rule = { id: 'saved-late', kind: 'dom', name: '延迟入口', enabled: true, locator: { path: [], selector: '#saved-late', identity: { tag: 'button' } } };
+    const startup = new FloatingToolbox({ document: doc, settings: { rules: [rule] } }).start();
+    const append = id => {
+        const node = doc.createElement('button');
+        node.id = id; node.textContent = id;
+        node.style.cssText = 'position:fixed;top:20px;left:20px;width:80px;height:44px';
+        doc.body.append(node); return node;
+    };
+    let refreshes = 0;
+    const refreshSaved = startup.refreshSaved.bind(startup);
+    startup.refreshSaved = () => { refreshes++; refreshSaved(); };
+    try {
+        await wait(1200);
+        const late = append('saved-late');
+        const unknown = append('unsaved-late');
+        await wait(1100);
+        assert(late.hasAttribute(HIDDEN) && startup.active.has(rule.id), '未点击工具箱时延迟入口没有自动补收');
+        assert(!unknown.hasAttribute(HIDDEN) && !startup.hasScanned && startup.candidates.length === 0, '启动补收误发现或隐藏新入口');
+        await wait(3100);
+        assert(startup.startupTimer === null && refreshes === 5, '启动补收没有在5次后停止');
+        late.remove();
+        const rebuilt = append('saved-late');
+        await wait(1100);
+        assert(!rebuilt.hasAttribute(HIDDEN) && refreshes === 5, '补收结束后仍在后台检查');
+        startup.setOpen(true);
+        assert(rebuilt.hasAttribute(HIDDEN), '打开工具箱没有恢复后续重建入口');
+    } finally { startup.destroy(); frame.remove(); }
 });
 
 window.fixtureResults = { total: results.length, passed: results.filter(r => r.passed).length, results };
