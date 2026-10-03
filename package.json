@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-floating-toolbox",
-  "version": "0.1.5-test.1",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "scripts": {

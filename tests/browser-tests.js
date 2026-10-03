@@ -284,7 +284,7 @@ await test('重新加载设置后入口自动匹配，关闭时取消启动补�
     assert(!document.querySelector(`[${HIDDEN}]`), '关闭插件没有恢复原入口');
     assert(!document.querySelector('.ftb-launcher'), '关闭插件没有清理界面');
 });
-await test('已保存的延迟入口自动补收，5秒后停止且不发现新入口', async () => {
+await test('已保存的延迟入口自动补收，10秒后停止且不发现新入口', async () => {
     const frame = document.createElement('iframe');
     frame.style.cssText = 'width:600px;height:300px;border:0';
     frame.srcdoc = '<body style="margin:0"></body>';
@@ -303,18 +303,18 @@ await test('已保存的延迟入口自动补收，5秒后停止且不发现新�
     const refreshSaved = startup.refreshSaved.bind(startup);
     startup.refreshSaved = () => { refreshes++; refreshSaved(); };
     try {
-        await wait(1200);
+        await wait(6200);
         const late = append('saved-late');
         const unknown = append('unsaved-late');
         await wait(1100);
         assert(late.hasAttribute(HIDDEN) && startup.active.has(rule.id), '未点击工具箱时延迟入口没有自动补收');
         assert(!unknown.hasAttribute(HIDDEN) && !startup.hasScanned && startup.candidates.length === 0, '启动补收误发现或隐藏新入口');
         await wait(3100);
-        assert(startup.startupTimer === null && refreshes === 5, '启动补收没有在5次后停止');
+        assert(startup.startupTimer === null && refreshes === 10, '启动补收没有在10次后停止');
         late.remove();
         const rebuilt = append('saved-late');
         await wait(1100);
-        assert(!rebuilt.hasAttribute(HIDDEN) && refreshes === 5, '补收结束后仍在后台检查');
+        assert(!rebuilt.hasAttribute(HIDDEN) && refreshes === 10, '补收结束后仍在后台检查');
         startup.setOpen(true);
         assert(rebuilt.hasAttribute(HIDDEN), '打开工具箱没有恢复后续重建入口');
     } finally { startup.destroy(); frame.remove(); }

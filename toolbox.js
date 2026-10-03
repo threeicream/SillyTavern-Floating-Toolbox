@@ -62,7 +62,7 @@ export class FloatingToolbox {
         this._mountSettings();
         this._placeLauncher();
         this.refreshSaved();
-        let remaining = 5;
+        let remaining = 10;
         this.startupTimer = this.win.setInterval(() => {
             if (--remaining === 0) {
                 this.win.clearInterval(this.startupTimer);
