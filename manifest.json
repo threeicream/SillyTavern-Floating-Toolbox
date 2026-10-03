@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "cyy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minimum_client_version": "1.18.0",
   "hooks": {
     "activate": "onEnable",

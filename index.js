@@ -27,23 +27,12 @@ export function onEnable() {
                 current.saveSettingsDebounced();
             },
         }).start();
-        const events = context.eventTypes || {};
-        for (const name of ['CHAT_CHANGED', 'PRESET_CHANGED', 'SETTINGS_LOADED']) {
-            if (events[name]) context.eventSource?.on(events[name], refresh);
-        }
     };
     boot();
 }
 
-function refresh() { instance?.queueScan(); }
-
 export function onDisable() {
     clearTimeout(bootTimer); bootTimer = null;
-    const context = globalThis.SillyTavern?.getContext?.();
-    const events = context?.eventTypes || {};
-    for (const name of ['CHAT_CHANGED', 'PRESET_CHANGED', 'SETTINGS_LOADED']) {
-        if (events[name]) context.eventSource?.removeListener?.(events[name], refresh);
-    }
     instance?.destroy(); instance = null;
 }
 

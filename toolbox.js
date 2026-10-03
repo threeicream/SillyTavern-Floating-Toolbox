@@ -17,12 +17,10 @@ export class FloatingToolbox {
         this.save = save;
         this.context = context;
         this.hiddenNodes = new Set();
-        this.boundRoots = new Map();
-        this.discoveryCache = new Map();
-        this.discoveryDirty = true;
-        this.nextDiscoveryRefresh = 0;
+        this.rootStyles = new Map();
         this.active = new Map();
         this.candidates = [];
+        this.hasScanned = false;
         this.statuses = new Map();
         this.open = false;
         this.view = 'tools';
@@ -62,9 +60,7 @@ export class FloatingToolbox {
         this.win.addEventListener('resize', this.resize);
         this._mountSettings();
         this._placeLauncher();
-        this.scan();
-        // Low-rate fallback catches stylesheets, late helper registration, and iframe navigation.
-        this.interval = this.win.setInterval(() => this.queueScan(false), 3000);
+        this.refreshSaved();
         return this;
     }
 
@@ -84,7 +80,7 @@ export class FloatingToolbox {
         const actions = el(this.doc, 'div', 'ftb-actions');
         actions.append(this._button('打开收纳管理', () => { this.view = 'manage'; this.setOpen(true); }));
         actions.append(this._button('恢复全部原入口', () => this.restoreAll()));
-        this.settingNode.append(actions, el(this.doc, 'p', '', '新增入口可以自动发现或点选添加，收纳规则保存在酒馆设置中。'));
+        this.settingNode.append(actions, el(this.doc, 'p', '', '点击扫描新入口才搜索一次，也可以点选添加。收纳规则保存在酒馆设置中。'));
         target.append(this.settingNode);
     }
 
@@ -93,44 +89,23 @@ export class FloatingToolbox {
         catch { this.notify('设置保存失败，当前操作仅在本页生效。请检查酒馆连接。'); }
     }
 
-    queueScan(refreshDiscovery = true) {
-        if (refreshDiscovery) this.discoveryDirty = true;
-        if (this.destroyed || this.timer || this.picking) return;
-        this.timer = this.win.setTimeout(() => { this.timer = null; this.scan({ refreshDiscovery: false }); }, 250);
+    _ensureStyle(root) {
+        if (this.rootStyles.has(root)) return;
+        const doc = root.nodeType === 9 ? root : root.ownerDocument;
+        const style = el(doc, 'style');
+        style.dataset.ftbOwned = 'true';
+        style.textContent = HIDE_CSS;
+        (root.nodeType === 9 ? root.head || root.body : root).append(style);
+        this.rootStyles.set(root, style);
     }
 
-    _observe(roots) {
-        const existing = new Set(roots.map(item => item.root));
-        for (const [root, binding] of this.boundRoots) {
-            if (existing.has(root)) continue;
-            binding.observer.disconnect();
-            binding.style.remove();
-            this.boundRoots.delete(root);
-            this.discoveryCache.delete(root);
+    _syncStyles(roots) {
+        for (const [root, style] of this.rootStyles) {
+            if (roots.has(root)) continue;
+            style.remove();
+            this.rootStyles.delete(root);
         }
-        for (const item of roots) {
-            if (this.boundRoots.has(item.root)) continue;
-            const root = item.root;
-            const doc = root.nodeType === 9 ? root : root.ownerDocument;
-            const style = el(doc, 'style');
-            style.dataset.ftbOwned = 'true';
-            style.textContent = HIDE_CSS;
-            (root.nodeType === 9 ? root.head || root.body : root).append(style);
-            const observer = new doc.defaultView.MutationObserver(records => {
-                if (this.picking) return;
-                if (records.some(record => {
-                    const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-                    if (target?.closest(`${OWN}, .mes`)) return false;
-                    if (record.type === 'childList') {
-                        if (target?.matches('style')) return true;
-                        return [...record.addedNodes, ...record.removedNodes].some(n => n.nodeType === 1 && !n.matches(OWN));
-                    }
-                    return true;
-                })) this.queueScan();
-            });
-            observer.observe(root.nodeType === 9 ? root.documentElement : root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'id', 'title', 'aria-label', 'hidden', 'src', 'href', 'disabled'] });
-            this.boundRoots.set(root, { observer, style });
-        }
+        for (const root of roots) this._ensureStyle(root);
     }
 
     _restoreNodes() {
@@ -138,22 +113,17 @@ export class FloatingToolbox {
         this.hiddenNodes.clear();
     }
 
-    scan({ refreshDiscovery = true } = {}) {
+    refreshSaved() {
         if (this.destroyed || this.picking) return;
         this._mountSettings();
         this._restoreNodes();
-        const roots = accessibleRoots(this.doc);
-        this._observe(roots);
-        if (refreshDiscovery || this.discoveryDirty || Date.now() >= this.nextDiscoveryRefresh) {
-            this.discoveryCache.clear();
-            this.discoveryDirty = false;
-            this.nextDiscoveryRefresh = Date.now() + 30000;
-        }
-        const helpers = helperEntries(this.win);
+        // Resolve saved selectors directly; do not walk unknown frames/shadow roots
+        // or search stylesheets while restoring previously collected tools.
+        const roots = new Set([this.doc]);
+        const helpers = this.settings.rules.some(rule => rule.kind === 'helper') ? helperEntries(this.win) : [];
         const helperById = new Map(helpers.map(entry => [entry.buttonId, entry]));
         this.active.clear();
         this.statuses.clear();
-        const savedKeys = new Set(this.settings.rules.map(rule => rule.kind === 'dom' ? locatorKey(rule.locator) : `helper:${rule.buttonId}`));
         for (const rule of this.settings.rules) {
             if (!this.settings.enabled || !rule.enabled) { this.statuses.set(rule.id, 'paused'); continue; }
             let node = null;
@@ -184,11 +154,31 @@ export class FloatingToolbox {
             this.active.set(rule.id, { rule, node, entry });
             this.statuses.set(rule.id, 'ok');
             for (const target of rule.kind === 'helper' ? nodes : node ? [node] : []) {
+                roots.add(target.getRootNode());
                 target.setAttribute(HIDDEN, 'true'); this.hiddenNodes.add(target);
             }
         }
+        this._syncStyles(roots);
+        this._updateResults();
+    }
+
+    // Only the explicit scan button invokes discovery. Results are a snapshot.
+    scan() {
+        if (this.destroyed || this.picking) return;
+        this.refreshSaved();
+        this.pending = null;
+        this.candidates = [...discoverDom(this.doc), ...helperEntries(this.win)].map(candidate => {
+            const { node, ...entry } = candidate;
+            return entry; // Snapshot metadata must not retain an old script document.
+        });
+        this.hasScanned = true;
+        this._updateResults();
+    }
+
+    _updateResults() {
+        const savedKeys = new Set(this.settings.rules.map(rule => rule.kind === 'dom' ? locatorKey(rule.locator) : `helper:${rule.buttonId}`));
         const ignored = new Set(this.settings.ignored);
-        this.candidates = [...discoverDom(this.doc, roots, this.discoveryCache), ...helpers].filter(entry => !savedKeys.has(entry.key) && !ignored.has(entry.key));
+        this.candidates = this.candidates.filter(entry => !savedKeys.has(entry.key) && !ignored.has(entry.key));
         const unique = new Map(this.candidates.map(entry => [entry.key, entry]));
         this.candidates = [...unique.values()];
         const badgeText = this.candidates.length ? `+${this.candidates.length}` : '';
@@ -196,7 +186,7 @@ export class FloatingToolbox {
         this.badge.textContent = badgeText;
         this.badge.hidden = !this.candidates.length;
         if (badgeChanged) this._placeLauncher();
-        const key = JSON.stringify([this.view, this.settings, [...this.statuses], this.candidates.map(c => [c.key, c.name]), this.message]);
+        const key = JSON.stringify([this.view, this.settings, [...this.statuses], this.hasScanned, this.candidates.map(c => [c.key, c.name]), this.message]);
         if (key !== this.renderKey) { this.renderKey = key; this.render(); }
     }
 
@@ -204,7 +194,7 @@ export class FloatingToolbox {
         this.open = open;
         this.panel.hidden = !open;
         this.launcher.setAttribute('aria-expanded', String(open));
-        if (open) { this.scan({ refreshDiscovery: false }); this.render(); this._placePanel(); }
+        if (open) { this.refreshSaved(); this.render(); this._placePanel(); }
     }
 
     notify(message) {
@@ -217,6 +207,15 @@ export class FloatingToolbox {
     accept(candidate, { name = candidate.name, icon = '◆' } = {}) {
         const key = candidate.key;
         if (this.settings.rules.some(rule => (rule.kind === 'dom' ? locatorKey(rule.locator) : `helper:${rule.buttonId}`) === key)) return;
+        if (candidate.kind === 'dom') {
+            const match = resolveLocator(this.doc, candidate.locator);
+            if (match.status !== 'ok' || !safeEntry(match.node) || !isVisible(match.node, false, true)) {
+                this.notify('这个扫描结果已经失效，请重新扫描或点选入口。'); return;
+            }
+            candidate = { ...candidate, node: match.node };
+        } else if (!helperEntries(this.win).some(entry => entry.buttonId === candidate.buttonId && entry.scriptId === candidate.scriptId)) {
+            this.notify('这个脚本按钮当前没有启用，请重新扫描。'); return;
+        }
         const id = this.win.crypto.randomUUID?.() || `ftb-${Date.now().toString(36)}-${[...this.win.crypto.getRandomValues(new Uint32Array(2))].map(n => n.toString(36)).join('')}`;
         const rule = { id, kind: candidate.kind, name: cleanText(name) || candidate.name, icon: cleanText(icon).slice(0, 4) || '◆', enabled: true };
         if (candidate.kind === 'dom') {
@@ -231,13 +230,14 @@ export class FloatingToolbox {
         this.settings.rules.push(rule);
         this.settings.enabled = true;
         this._persist();
-        this.scan();
+        this.refreshSaved();
         return rule;
     }
 
     async trigger(id) {
+        this.refreshSaved();
         const active = this.active.get(id);
-        if (!active) { this.scan(); this.notify('这个入口当前不存在，请检查当前角色或预设。'); return; }
+        if (!active) { this.notify('这个入口当前不存在，请检查当前角色或预设。'); return; }
         try {
             if (active.rule.kind === 'helper') {
                 const entries = helperEntries(this.win);
@@ -255,11 +255,11 @@ export class FloatingToolbox {
                 if (this.settings.autoClose) this.setOpen(false);
                 active.node.click();
             }
-            this.queueScan();
+            this.refreshSaved();
         } catch (error) {
             active.rule.enabled = false;
             this._persist();
-            this.scan();
+            this.refreshSaved();
             this.view = 'manage';
             this.setOpen(true);
             this.notify(`原入口已恢复：${cleanText(error.message)}`);
@@ -271,7 +271,7 @@ export class FloatingToolbox {
         this._restoreNodes();
         this._persist();
         this.view = 'manage';
-        this.scan();
+        this.refreshSaved();
         this.notify('已恢复全部原入口。规则仍保留，可以重新启用收纳。');
     }
 
@@ -313,51 +313,57 @@ export class FloatingToolbox {
             grid.append(button);
         }
         content.append(grid);
-        if (!grid.childElementCount) content.append(el(this.doc, 'p', 'ftb-empty', this.settings.enabled ? '还没有可用工具。进入收纳管理，确认发现的入口或点选添加。' : '收纳已暂停，原入口已恢复。可在收纳管理中重新启用。'));
-        if (this.candidates.length) content.append(this._button(`发现 ${this.candidates.length} 个新入口 · 查看`, () => { this.view = 'manage'; this.render(); }));
+        if (!grid.childElementCount) content.append(el(this.doc, 'p', 'ftb-empty', this.settings.enabled ? '还没有可用工具。点击扫描新入口，或在收纳管理中点选添加。' : '收纳已暂停，原入口已恢复。可在收纳管理中重新启用。'));
+        content.append(this._button('扫描新入口', () => { this.view = 'manage'; this.scan(); }));
+        if (this.candidates.length) content.append(this._button(`上次扫描 · ${this.candidates.length} 个候选 · 查看`, () => { this.view = 'manage'; this.render(); }));
     }
 
     _renderManage(content) {
         const actions = el(this.doc, 'div', 'ftb-actions');
-        actions.append(this._button('＋ 点选添加', () => this.startPicker()), this._button('重新扫描', () => { this.scan(); this.render(); }));
+        actions.append(this._button('扫描新入口', () => this.scan()), this._button('＋ 点选添加', () => this.startPicker()));
         content.append(actions);
         const toggles = el(this.doc, 'div', 'ftb-options');
         const checkbox = (label, key) => {
             const wrapper = el(this.doc, 'label');
             const input = el(this.doc, 'input');
             input.type = 'checkbox'; input.checked = this.settings[key];
-            input.addEventListener('change', () => { this.settings[key] = input.checked; this._persist(); this.scan(); });
+            input.addEventListener('change', () => { this.settings[key] = input.checked; this._persist(); this.refreshSaved(); });
             wrapper.append(input, this.doc.createTextNode(label)); return wrapper;
         };
         toggles.append(checkbox('启用收纳', 'enabled'), checkbox('选中工具后自动收起', 'autoClose'));
         content.append(toggles);
         content.append(el(this.doc, 'h4', '', '已保存的入口'));
-        if (!this.settings.rules.length) content.append(el(this.doc, 'p', 'ftb-muted', '确认后才隐藏原入口；角色或预设暂时没有的入口会自动等待。'));
+        if (!this.settings.rules.length) content.append(el(this.doc, 'p', 'ftb-muted', '确认后才隐藏原入口。已保存规则会在打开工具箱时核对。'));
         const statusText = { ok: '可用', paused: '保留原入口', missing: '当前未出现', ambiguous: '匹配不唯一，原入口保留', invalid: '规则无效', panel: '面板打开中，保持可见' };
         this.settings.rules.forEach((rule, index) => {
             const row = el(this.doc, 'div', 'ftb-rule');
             row.append(el(this.doc, 'strong', '', `${rule.icon || '◆'} ${rule.name}`), el(this.doc, 'small', 'ftb-muted', statusText[this.statuses.get(rule.id)] || '等待扫描'));
             const buttons = el(this.doc, 'div', 'ftb-actions');
-            buttons.append(this._button(rule.enabled ? '留在外面' : '重新收纳', () => { rule.enabled = !rule.enabled; this._persist(); this.scan(); }));
+            buttons.append(this._button(rule.enabled ? '留在外面' : '重新收纳', () => { rule.enabled = !rule.enabled; this._persist(); this.refreshSaved(); }));
             buttons.append(this._button('编辑', () => this._editRule(row, rule)));
-            const up = this._button('↑', () => { [this.settings.rules[index - 1], this.settings.rules[index]] = [rule, this.settings.rules[index - 1]]; this._persist(); this.scan(); }); up.disabled = index === 0; up.setAttribute('aria-label', `上移${rule.name}`);
-            const down = this._button('↓', () => { [this.settings.rules[index + 1], this.settings.rules[index]] = [rule, this.settings.rules[index + 1]]; this._persist(); this.scan(); }); down.disabled = index === this.settings.rules.length - 1; down.setAttribute('aria-label', `下移${rule.name}`);
-            buttons.append(up, down, this._button('移除', () => { this.settings.rules = this.settings.rules.filter(r => r !== rule); this._persist(); this.scan(); }));
+            const up = this._button('↑', () => { [this.settings.rules[index - 1], this.settings.rules[index]] = [rule, this.settings.rules[index - 1]]; this._persist(); this.refreshSaved(); }); up.disabled = index === 0; up.setAttribute('aria-label', `上移${rule.name}`);
+            const down = this._button('↓', () => { [this.settings.rules[index + 1], this.settings.rules[index]] = [rule, this.settings.rules[index + 1]]; this._persist(); this.refreshSaved(); }); down.disabled = index === this.settings.rules.length - 1; down.setAttribute('aria-label', `下移${rule.name}`);
+            buttons.append(up, down, this._button('移除', () => { this.settings.rules = this.settings.rules.filter(r => r !== rule); this._persist(); this.refreshSaved(); }));
             row.append(buttons); content.append(row);
         });
-        content.append(el(this.doc, 'h4', '', `发现的入口 · ${this.candidates.length}`));
-        if (!this.candidates.length) content.append(el(this.doc, 'p', 'ftb-muted', '没有新候选。未识别到的悬浮球可以通过点选添加。'));
+        content.append(el(this.doc, 'h4', '', `扫描结果 · ${this.candidates.length}`));
+        content.append(el(this.doc, 'p', 'ftb-muted', this.hasScanned ? '这是上次扫描的结果；新增脚本或切换预设后，可再次点击扫描新入口。' : '尚未扫描。点击扫描新入口只搜索一次，不会后台持续检查。'));
+        if (this.hasScanned && !this.candidates.length) content.append(el(this.doc, 'p', 'ftb-muted', '这次没有新候选，未识别到的悬浮球可以通过点选添加。'));
         for (const candidate of this.candidates.slice(0, 60)) {
             const row = el(this.doc, 'div', 'ftb-candidate');
             row.append(el(this.doc, 'strong', '', candidate.name), el(this.doc, 'small', 'ftb-muted', candidate.source));
             const actions = el(this.doc, 'div', 'ftb-actions');
             actions.append(this._button('收纳…', () => { this.pending = candidate; this.render(); }));
-            if (candidate.node) actions.append(this._button('定位', () => this._highlight(candidate.node)));
-            actions.append(this._button('忽略', () => { this.settings.ignored.push(candidate.key); this._persist(); this.scan(); }));
+            if (candidate.kind === 'dom') actions.append(this._button('定位', () => {
+                const match = resolveLocator(this.doc, candidate.locator);
+                if (match.node) this._highlight(match.node);
+                else this.notify('这个扫描结果已经失效，请重新扫描。');
+            }));
+            actions.append(this._button('忽略', () => { this.settings.ignored.push(candidate.key); this._persist(); this.refreshSaved(); }));
             row.append(actions); content.append(row);
         }
         const footer = el(this.doc, 'div', 'ftb-actions ftb-footer');
-        footer.append(this._button('恢复全部原入口', () => this.restoreAll()), this._button('重置忽略列表', () => { this.settings.ignored = []; this._persist(); this.scan(); }));
+        footer.append(this._button('恢复全部原入口', () => this.restoreAll()), this._button('重置忽略列表', () => { this.settings.ignored = []; this._persist(); this.candidates = []; this.hasScanned = false; this.refreshSaved(); }));
         footer.append(this._button('导出规则', () => this.exportRules()), this._button('导入规则', () => this.importRules()));
         content.append(footer);
     }
@@ -396,12 +402,13 @@ export class FloatingToolbox {
                 if (match.node && safeEntry(match.node)) locator.identity = makeLocator(match.node, locator.path).identity;
                 rule.locator = locator;
             }
-            name.blur(); this._persist(); this.scan(); this.render();
+            name.blur(); this._persist(); this.refreshSaved(); this.render();
         }), this._button('取消', () => { name.blur(); this.render(); }));
         row.querySelector('.ftb-editor')?.remove(); row.append(editor);
     }
 
     _highlight(node) {
+        this._ensureStyle(node.getRootNode());
         node.setAttribute('data-ftb-pick', 'true');
         this.win.setTimeout(() => node.removeAttribute('data-ftb-pick'), 1800);
     }
@@ -417,6 +424,7 @@ export class FloatingToolbox {
         this.doc.body.append(this.pickerBanner);
         this.pickerBindings = [];
         for (const { root, path } of accessibleRoots(this.doc)) {
+            this._ensureStyle(root);
             const stopDown = event => { if (!event.composedPath().some(n => n?.matches?.(OWN))) { event.preventDefault(); event.stopImmediatePropagation(); } };
             const move = event => {
                 const node = pickAction(event.composedPath().find(n => n?.nodeType === 1));
@@ -459,7 +467,7 @@ export class FloatingToolbox {
         this.pickHovered = null;
         this.pickerBanner?.remove();
         this.pickerBindings = [];
-        this.scan();
+        this.refreshSaved();
     }
 
     _positionKey() { return `floating-toolbox-position:${this.win.innerWidth < 650 ? 'compact' : 'wide'}`; }
@@ -531,7 +539,7 @@ export class FloatingToolbox {
                 if (raw.version !== 1 || !Array.isArray(raw.rules)) throw new Error('不是有效的工具箱规则文件');
                 const imported = normalizeSettings(raw);
                 if (imported.rules.length !== raw.rules.length) throw new Error('规则格式不完整');
-                this._restoreNodes(); this.settings = imported; this._persist(); this.scan(); this.render();
+                this._restoreNodes(); this.settings = imported; this._persist(); this.refreshSaved(); this.render();
                 this.notify('规则已导入。无法唯一匹配的入口会保留原样。');
             } catch (error) { this.notify(`导入失败：${cleanText(error.message)}`); }
         });
@@ -542,12 +550,11 @@ export class FloatingToolbox {
         if (this.destroyed) return;
         this.stopPicker();
         this.destroyed = true;
-        this.win.clearTimeout(this.timer);
         this.win.clearTimeout(this.messageTimer);
-        this.win.clearInterval(this.interval);
         this._restoreNodes();
-        for (const { observer, style } of this.boundRoots.values()) { observer.disconnect(); style.remove(); }
-        this.boundRoots.clear();
+        for (const style of this.rootStyles.values()) style.remove();
+        this.rootStyles.clear();
+        this.active.clear(); this.statuses.clear(); this.candidates = []; this.pending = null;
         this.doc.removeEventListener('pointerdown', this.outside);
         this.doc.removeEventListener('keydown', this.escape);
         this.win.removeEventListener('resize', this.resize);

@@ -27,14 +27,33 @@ const emitted = [];
 const context = () => ({ eventSource: { emit: async id => { emitted.push(id); } } });
 const app = new FloatingToolbox({ save: value => { saved = value; }, context }).start();
 window.fixtureApp = app;
+const candidateFor = node => app.candidates.find(candidate => candidate.kind === 'dom' && resolveLocator(document, candidate.locator).node === node);
+const clickScan = () => [...document.querySelectorAll('.ftb-panel button')].find(button => button.textContent === '扫描新入口').click();
 
-await test('自动发现新悬浮球，原生控件不进入候选', () => {
-    assert(app.candidates.some(c => c.node === original), '未发现悬浮球');
-    assert(!app.candidates.some(c => c.node?.id === 'native-fixture'), '误收原生控件');
+await test('启动和打开工具箱不搜索新入口', () => {
+    assert(app.candidates.length === 0 && !app.hasScanned, '启动时搜索了新入口');
+    app.setOpen(true);
+    assert(app.candidates.length === 0 && !app.hasScanned, '打开工具箱时搜索了新入口');
     assert(!original.hasAttribute(HIDDEN), '未经确认就隐藏入口');
 });
+await test('点击扫描按钮只搜索一次，原生控件不进入候选', () => {
+    const originalQuery = document.querySelectorAll; let discoveryQueries = 0;
+    document.querySelectorAll = function(selector) {
+        if (selector === '[style]') discoveryQueries++;
+        return originalQuery.call(this, selector);
+    };
+    try {
+        clickScan();
+        assert(candidateFor(original), '未发现悬浮球');
+        assert(!candidateFor(document.getElementById('native-fixture')), '误收原生控件');
+        assert(discoveryQueries === 1, `单次点击搜索了${discoveryQueries}次`);
+        app.setOpen(false); app.setOpen(true);
+        assert(discoveryQueries === 1, '再次打开时重新搜索页面');
+        assert(app.candidates.every(candidate => !('node' in candidate)), '候选快照仍保存第三方DOM引用');
+    } finally { document.querySelectorAll = originalQuery; }
+});
 
-const originalRule = app.accept(app.candidates.find(c => c.node === original), { icon: '📖' });
+const originalRule = app.accept(candidateFor(original), { icon: '📖' });
 await test('确认后隐藏原球，设置保留稳定规则', () => {
     assert(getComputedStyle(original).visibility === 'hidden', '未隐藏原入口');
     assert(saved.rules[0].locator.selector === '#fixture-magic', '规则未保存');
@@ -45,20 +64,22 @@ await test('工具选项触发原事件并自动收起', async () => {
     assert(clicks === 1 && !app.open, '原事件或自动收起不正确');
     app.scan();
 });
-await test('新增入口不改源码，变化监听自动发现', async () => {
+await test('新增入口和空闲等待不触发扫描，下一次点击才更新结果', async () => {
     ball('fixture-late-script', '新预设脚本', 100);
-    await wait(550);
-    assert(app.candidates.some(c => c.node?.id === 'fixture-late-script'), '没有自动发现新脚本入口');
+    await wait(3400);
+    assert(!candidateFor(document.getElementById('fixture-late-script')), 'DOM变化或定时器触发了新入口扫描');
+    app.setOpen(true);
+    assert(!candidateFor(document.getElementById('fixture-late-script')), '打开工具箱搜索了新入口');
+    clickScan();
+    assert(candidateFor(document.getElementById('fixture-late-script')), '手动扫描未发现新入口');
 });
-await test('按钮被脚本重新创建后，规则重新绑定新事件', async () => {
+await test('按钮重建后，点击工具直接绑定当前事件', async () => {
     original.remove();
     const replacement = ball('fixture-magic', '魔法大典', 20);
     replacement.addEventListener('click', () => { clicks += 10; });
-    app.scan();
-    assert(getComputedStyle(replacement).visibility === 'hidden', '未收纳重建入口');
     await app.trigger(originalRule.id);
     assert(clicks === 11, '仍然触发旧按钮');
-    app.scan();
+    assert(getComputedStyle(replacement).visibility === 'hidden', '未收纳重建入口');
 });
 await test('重复标识匹配失败时，恢复原入口', () => {
     const duplicate = ball('fixture-magic', '魔法大典', 180);
@@ -107,7 +128,7 @@ await test('同源iframe按钮可发现、收纳并触发', async () => {
     let frameClicks = 0;
     const entry = frame.contentDocument.getElementById('frame-entry'); entry.onclick = () => { frameClicks++; };
     app.scan();
-    const candidate = app.candidates.find(c => c.node === entry);
+    const candidate = candidateFor(entry);
     assert(candidate && candidate.locator.path.length === 1, '未发现同源框架入口');
     const rule = app.accept(candidate); await app.trigger(rule.id); app.scan();
     assert(frameClicks === 1, '框架入口未触发');
@@ -118,7 +139,7 @@ await test('开放Shadow DOM中的入口可绑定', () => {
     const host = document.createElement('div'); host.id = 'fixture-shadow'; document.body.append(host);
     const root = host.attachShadow({ mode: 'open' });
     root.innerHTML = '<button id="shadow-entry" title="影子入口" style="position:fixed;top:110px;left:140px;width:60px;height:60px;cursor:pointer">影子入口</button>';
-    app.scan(); const entry = root.querySelector('button'); const candidate = app.candidates.find(c => c.node === entry);
+    app.scan(); const entry = root.querySelector('button'); const candidate = candidateFor(entry);
     assert(candidate && candidate.locator.path[0].kind === 'shadow', '未发现影子入口');
     const rule = app.accept(candidate);
     assert(resolveLocator(document, rule.locator).node === entry && entry.hasAttribute(HIDDEN), '影子入口匹配失败');
@@ -169,26 +190,35 @@ await test('长管理列表不会对每个普通按钮读取布局', () => {
         assert(reads < 200, `读取布局过多：${reads}`);
     } finally { window.getComputedStyle = originalStyle; manager.remove(); }
 });
-await test('缓存建立后，动态head样式仍会自动发现和移除入口', async () => {
+await test('样式变化不会搜索，下一次扫描重新读取样式', async () => {
     const entry = document.createElement('button'); entry.id = 'fixture-styled-late'; entry.textContent = '样式加载入口';
     document.body.append(entry); app.scan();
-    assert(!app.candidates.some(c => c.node === entry), '普通按钮提前成为候选');
+    assert(!candidateFor(entry), '普通按钮提前成为候选');
     const style = document.createElement('style');
     style.textContent = '#fixture-styled-late{position:fixed;top:170px;left:20px;width:80px;height:50px}';
     document.head.append(style); await wait(550);
-    assert(app.candidates.some(c => c.node === entry), '新head样式没有使发现缓存刷新');
+    assert(!candidateFor(entry), '样式变化触发了后台扫描');
+    app.scan(); assert(candidateFor(entry), '手动扫描未读取新样式');
     style.textContent = ''; await wait(550);
-    assert(!app.candidates.some(c => c.node === entry), '样式移除后仍显示候选');
+    assert(candidateFor(entry), '未点击扫描，候选快照却自动改变');
+    app.scan(); assert(!candidateFor(entry), '手动扫描未移除过期候选');
     style.remove(); entry.remove(); app.scan();
 });
 await test('长候选列表中，确认名称和保存按钮始终可见', () => {
     const nodes = Array.from({ length: 30 }, (_, i) => ball(`long-list-${i}`, `长列表入口${i}`, 20 + i % 8 * 70));
-    app.scan(); app.pending = app.candidates.find(c => c.node === nodes[20]);
+    app.scan(); app.pending = candidateFor(nodes[20]);
     app.view = 'manage'; app.setOpen(true);
     const save = [...document.querySelectorAll('.ftb-pending button')].find(n => n.textContent === '保存收纳');
     const rect = save.getBoundingClientRect();
     assert(rect.top >= 0 && rect.bottom <= window.innerHeight, '保存按钮被滚动列表挡住');
     app.pending = null; nodes.forEach(n => n.remove()); app.scan();
+});
+await test('过期扫描结果不会保存或隐藏错误入口', () => {
+    const entry = ball('fixture-expired', '过期入口'); app.scan();
+    const candidate = candidateFor(entry); entry.remove();
+    const count = app.settings.rules.length;
+    assert(!app.accept(candidate) && app.settings.rules.length === count, '过期结果被保存');
+    assert(!entry.hasAttribute(HIDDEN), '已移除的旧节点被隐藏'); app.scan();
 });
 await test('暂停收纳立即恢复原入口，重新启用仍使用旧规则', () => {
     app.restoreAll(); assert(!document.querySelector(`[${HIDDEN}]`), '恢复全部失败');
