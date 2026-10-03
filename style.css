@@ -1,4 +1,4 @@
-.ftb-host, .ftb-settings, .ftb-pick-banner {
+.ftb-host, .ftb-pick-banner {
     --ftb-bg: #202033;
     --ftb-gold: #d5b96e;
     --ftb-text: #f0e7d2;
@@ -9,9 +9,9 @@
     line-height: 1.5;
     box-sizing: border-box;
 }
-.ftb-host *, .ftb-settings *, .ftb-pick-banner * { box-sizing: border-box; }
-.ftb-host [hidden], .ftb-settings [hidden] { display: none !important; }
-.ftb-host button, .ftb-settings button, .ftb-pick-banner button {
+.ftb-host *, .ftb-pick-banner * { box-sizing: border-box; }
+.ftb-host [hidden] { display: none !important; }
+.ftb-host button, .ftb-pick-banner button {
     font: inherit;
     cursor: pointer;
     color: var(--ftb-text);
@@ -21,8 +21,8 @@
     box-shadow: none;
     margin: 0;
 }
-.ftb-host button:hover, .ftb-settings button:hover, .ftb-pick-banner button:hover { border-color: var(--ftb-gold); background: #39364a; }
-.ftb-host button:focus-visible, .ftb-settings button:focus-visible { outline: 2px solid var(--ftb-gold); outline-offset: 3px; }
+.ftb-host button:hover, .ftb-pick-banner button:hover { border-color: var(--ftb-gold); background: #39364a; }
+.ftb-host button:focus-visible { outline: 2px solid var(--ftb-gold); outline-offset: 3px; }
 .ftb-host button:disabled { opacity: .35; cursor: default; }
 .ftb-launcher {
     position: fixed;
@@ -86,8 +86,6 @@
 .ftb-content h4 { font-size: 14px; color: #e8cd8d; margin: 16px 0 8px; }
 .ftb-editor { margin-top: 5px; border-top: 1px solid #5d5343; padding-top: 5px; }
 .ftb-footer { border-top: 1px solid #5d5343; padding-top: 9px; margin-top: 14px; }
-.ftb-settings { padding: 10px; border: 1px solid #5d5343; border-radius: 10px; background: #202033; margin: 7px 0; }
-.ftb-settings summary { cursor: pointer; color: #e8cd8d; font-weight: 600; }
 .ftb-pick-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2147483100; max-width: calc(100vw - 20px); padding: 12px 16px; border: 1px solid #d5b96e; border-radius: 12px; background: #202033f5; box-shadow: 0 6px 28px #0008; }
 .ftb-pick-banner button { margin-left: 10px; padding: 6px 10px; }
 @media (max-width: 500px) {
