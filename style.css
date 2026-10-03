@@ -1,3 +1,6 @@
+.ftb-settings-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 5px 2px; }
+.ftb-settings .ftb-settings-action { width: auto; flex: 0 0 auto; white-space: nowrap; font-size: .9em; padding: 4px 12px; }
+.ftb-settings-tip { margin: 4px 0 8px; }
 .ftb-host, .ftb-pick-banner {
     --ftb-bg: #202033;
     --ftb-gold: #d5b96e;

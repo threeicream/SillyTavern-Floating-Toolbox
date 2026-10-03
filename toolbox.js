@@ -80,10 +80,10 @@ export class FloatingToolbox {
         const header = el(this.doc, 'div', 'inline-drawer-toggle inline-drawer-header');
         header.append(el(this.doc, 'b', '', '悬浮入口工具箱'), el(this.doc, 'div', 'inline-drawer-icon fa-solid fa-circle-chevron-down down'));
         const content = el(this.doc, 'div', 'inline-drawer-content');
-        const actions = el(this.doc, 'div', 'flex-container');
-        actions.append(this._button('打开收纳管理', () => { this.view = 'manage'; this.setOpen(true); }, 'menu_button'));
-        actions.append(this._button('恢复全部原入口', () => this.restoreAll(), 'menu_button'));
-        content.append(actions, el(this.doc, 'p', '', '点击扫描新入口才搜索一次，也可以点选添加。收纳规则保存在酒馆设置中。'));
+        const actions = el(this.doc, 'div', 'ftb-settings-actions');
+        actions.append(this._button('打开收纳管理', () => { this.view = 'manage'; this.setOpen(true); }, 'menu_button ftb-settings-action'));
+        actions.append(this._button('恢复全部原入口', () => this.restoreAll(), 'menu_button ftb-settings-action'));
+        content.append(actions, el(this.doc, 'div', 'ftb-settings-tip', '在工具箱中扫描或点选添加，即可收纳悬浮入口。'));
         drawer.append(header, content);
         this.settingNode.append(drawer);
         target.append(this.settingNode);
