@@ -2,7 +2,7 @@
 
 把 SillyTavern 插件、酒馆助手全局／角色卡／预设脚本产生的悬浮球和悬浮按钮，收进一个可拖动的工具箱。原生 JavaScript + CSS，无运行依赖，无编译步骤，不需要服务器插件。
 
-![51004 酒馆中的工具箱](docs/preview.png)
+![工具箱界面预览](docs/preview.png)
 
 ## 使用
 
@@ -20,7 +20,15 @@
 
 ## 安装
 
-将本目录下的 `manifest.json`、`index.js`、`toolbox.js`、`dom.js`、`style.css` 放在酒馆的一个第三方扩展目录内，例如：
+需要 SillyTavern 1.18.0 或更新版本。在酒馆中打开「扩展 → 安装扩展」，输入以下仓库地址：
+
+```text
+https://github.com/threeicream/SillyTavern-Floating-Toolbox
+```
+
+安装完成后刷新页面，扩展管理中应出现「悬浮入口工具箱」。后续可通过酒馆的扩展管理更新。
+
+手动安装时，将本目录下的 `manifest.json`、`index.js`、`toolbox.js`、`dom.js`、`style.css` 放在酒馆的一个第三方扩展目录内，例如：
 
 ```text
 public/scripts/extensions/third-party/SillyTavern-Floating-Toolbox/
@@ -28,7 +36,7 @@ public/scripts/extensions/third-party/SillyTavern-Floating-Toolbox/
 
 也可以安装在用户扩展目录 `data/<user-handle>/extensions/SillyTavern-Floating-Toolbox/`。刷新浏览器，扩展管理中应出现「悬浮入口工具箱」。关闭扩展的生命周期钩子会清理收纳状态；旧版酒馆关闭扩展后刷新页面即可恢复入口。
 
-当前项目创建在独立 Git 仓库内。未设置远程仓库；如之后将仓库发布到 Git 服务，可通过酒馆的「安装扩展」输入其仓库地址安装。测试文件、文档不是运行时必需文件。
+测试文件、文档不是运行时必需文件。安装本扩展无需运行 `npm install` 或编译。
 
 ## 规则和识别
 
