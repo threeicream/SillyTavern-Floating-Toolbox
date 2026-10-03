@@ -428,7 +428,8 @@ export class FloatingToolbox {
         this.pickerBanner.append(this._button('取消 / Esc', () => this.stopPicker()));
         this.doc.body.append(this.pickerBanner);
         this.pickerBindings = [];
-        for (const { root, path } of accessibleRoots(this.doc)) {
+        const rootPaths = new Map(accessibleRoots(this.doc).map(({ root, path }) => [root, path]));
+        for (const root of rootPaths.keys()) {
             this._ensureStyle(root);
             const stopDown = event => { if (!event.composedPath().some(n => n?.matches?.(OWN))) { event.preventDefault(); event.stopImmediatePropagation(); } };
             const move = event => {
@@ -446,6 +447,10 @@ export class FloatingToolbox {
                     this.pickerBanner.firstChild.textContent = '请选择悬浮入口，酒馆原生控件和完整弹窗不收纳。'; return;
                 }
                 try {
+                    // A document capture listener can see a click inside an open
+                    // Shadow DOM. Persist the selected node's root, not the listener's.
+                    const path = rootPaths.get(node.getRootNode());
+                    if (!path) throw new Error('这个入口的页面结构已经变化，请取消后重新点选。');
                     const locator = makeLocator(node, path);
                     this.pending = { kind: 'dom', locator, node, name: labelOf(node) || node.id || '新入口', key: locatorKey(locator), source: '手动点选' };
                     this.stopPicker(); this.view = 'manage'; this.setOpen(true);

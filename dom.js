@@ -168,7 +168,9 @@ export function safeEntry(node) {
 
 function floatingHost(el) {
     let node = el;
-    for (let depth = 0; node && depth < 6; depth++, node = node.parentElement) {
+    // A static button can float with its Shadow DOM host. Cross that boundary
+    // when checking ancestors, just as ordinary children inherit a fixed host.
+    for (let depth = 0; node && depth < 6; depth++, node = node.parentElement || node.getRootNode().host) {
         const css = node.ownerDocument.defaultView.getComputedStyle(node);
         if (['fixed', 'absolute'].includes(css.position)) {
             const rect = node.getBoundingClientRect();

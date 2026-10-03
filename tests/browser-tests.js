@@ -145,6 +145,49 @@ await test('开放Shadow DOM中的入口可绑定', () => {
     assert(resolveLocator(document, rule.locator).node === entry && entry.hasAttribute(HIDDEN), '影子入口匹配失败');
     host.remove(); app.scan();
 });
+await test('浮动Shadow宿主内的普通按钮可发现、收纳并触发', async () => {
+    const host = document.createElement('div'); host.id = 'fixture-floating-shadow';
+    host.style.cssText = 'position:fixed;top:110px;left:140px'; document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<button aria-label="战斗目录" style="width:100px;height:44px;cursor:pointer">战斗目录</button>';
+    const entry = root.querySelector('button'); let opened = 0; entry.onclick = () => { opened++; };
+    app.scan(); const candidate = candidateFor(entry);
+    assert(candidate && candidate.locator.path[0].selector === '#fixture-floating-shadow', '未跨Shadow宿主发现普通按钮');
+    const rule = app.accept(candidate);
+    assert(rule && entry.hasAttribute(HIDDEN) && !host.hasAttribute(HIDDEN), '未收纳按钮或错误隐藏了整个宿主');
+    await app.trigger(rule.id);
+    assert(opened === 1, '未触发原按钮事件'); host.remove(); app.scan();
+});
+await test('点选iframe内嵌套Shadow按钮保存完整路径且不执行原操作', async () => {
+    const frame = document.createElement('iframe'); frame.id = 'fixture-picker-frame';
+    frame.style.cssText = 'position:fixed;top:110px;left:260px;width:150px;height:80px;border:0';
+    frame.srcdoc = '<body style="margin:0"><div id="outer-shadow"></div></body>';
+    document.body.append(frame); await new Promise(resolve => { frame.onload = resolve; });
+    const outer = frame.contentDocument.getElementById('outer-shadow').attachShadow({ mode: 'open' });
+    const innerHost = frame.contentDocument.createElement('div'); innerHost.id = 'inner-shadow'; outer.append(innerHost);
+    const inner = innerHost.attachShadow({ mode: 'open' });
+    inner.innerHTML = '<button aria-label="行动选项" style="width:100px;height:44px;cursor:pointer">行动选项</button>';
+    const entry = inner.querySelector('button'); let opened = 0; entry.onclick = () => { opened++; };
+    app.startPicker(); entry.click();
+    assert(opened === 0 && app.pending?.node === entry && !app.picking, '点选执行了原功能或未完成');
+    const candidate = app.pending; app.pending = null;
+    assert(candidate.locator.path.map(step => step.kind).join(',') === 'frame,shadow,shadow', '捕获阶段丢失了框架或Shadow路径');
+    const rule = app.accept(candidate);
+    assert(rule && resolveLocator(document, rule.locator).node === entry && entry.hasAttribute(HIDDEN), '点选结果被误判失效');
+    await app.trigger(rule.id);
+    assert(opened === 1, '已收纳按钮未触发'); frame.remove(); app.scan();
+});
+await test('点选期间新建的Shadow根不会误触发原按钮', () => {
+    app.startPicker();
+    const host = document.createElement('div'); host.id = 'fixture-picker-late-shadow';
+    document.body.append(host); const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<button aria-label="稍后加载入口" style="width:100px;height:44px">稍后加载入口</button>';
+    const entry = root.querySelector('button'); let accidental = 0; entry.onclick = () => { accidental++; };
+    entry.click();
+    assert(accidental === 0 && app.picking && !app.pending, '新根中的按钮被误触发或保存了错误路径');
+    assert(app.pickerBanner.textContent.includes('重新点选'), '未说明需要重新点选');
+    app.stopPicker(); host.remove(); app.scan();
+});
 await test('点选添加不会执行原按钮，支持命名后保存', () => {
     const entry = document.getElementById('fixture-late-script'); let accidental = 0; entry.onclick = () => { accidental++; };
     app.startPicker(); entry.click();
